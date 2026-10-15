@@ -1,10 +1,17 @@
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.linalg import eig
+from math import *
 
 class Stability:
     def __init__(self, setup, mode='convection'):
         self.setup = setup
+        self.setup['omega'] = 2 * pi *self.setup['f']
+        self.setup['tau_D'] = self.setup['delta_diff']**2 / self.setup['kappa']
+        self.setup['mu'] = (self.setup['gamma'] - 1) / self.setup['L'] * sqrt(2 * self.setup['kappa'] / self.setup['omega'])
+        self.setup['Pr'] = self.setup['nu']/self.setup['kappa']
+        self.setup['Ra_th'] = self.setup['rho'] * 9.81 * self.setup['cp_b'] * self.setup['L']**3 / (self.setup['nu'] * self.setup['lambda'])
+        print(self.setup['Ra_th'])
         self.mode = mode
 
     def create_chebyshev_grid(self):
@@ -102,9 +109,9 @@ class Stability:
         A[p_slice, p_slice] = -self.setup['Ra_th'] * D1 - self.setup['Ra_th'] * self.setup['alpha_p'] * I
         A[p_slice, T_slice] = -self.setup['Ra_th'] * self.setup['alpha_T'] * I
         
-        B[T_slice, p_slice] = -self.setup['D_val'] * self.setup['alpha_b'] * np.diag(Tb)
+        B[T_slice, p_slice] = -self.setup['D_val'] * self.setup['alpha_p'] * np.diag(Tb)
         B[T_slice, T_slice] = np.diag(rho_b * self.setup['cp_b'])
-        A[T_slice, uz_slice] = np.diag(-rho_b * self.setup['cp_b'] * dTb_dz + self.setup['D_val'] * self.setup['alpha_b'] * Tb * dp_dz)
+        A[T_slice, uz_slice] = np.diag(-rho_b * self.setup['cp_b'] * dTb_dz + self.setup['D_val'] * self.setup['alpha_p'] * Tb * dp_dz)
         A[T_slice, T_slice] = D2 - (self.setup['kx']**2) * I
         
         for b_idx in [0, self.setup['N']]:
