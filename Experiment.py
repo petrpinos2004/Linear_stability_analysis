@@ -9,10 +9,11 @@ import linear_stability as mother
 
 class Analysis(mother.Stability):
 
-    def __init__(self):
+    def __init__(self, mode):
         
         setup = {
-            'N' : 100,
+            'N' : 200,
+            'L' : 0.3,
             'Pr' : 1.0,
             'Ra_th' : 1e4,
             'kx' : 3.117,
@@ -31,8 +32,8 @@ class Analysis(mother.Stability):
             'tau_D' : 1,
         }
 
-        super().__init__(setup)
+        super().__init__(setup, mode)
 
-experiment = Analysis()
+experiment = Analysis(mode='modulation')
 experiment.run()
        

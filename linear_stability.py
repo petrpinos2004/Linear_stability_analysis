@@ -37,7 +37,8 @@ class Stability:
         theta_B = - np.arctan(1.0 / (1.0 + self.setup['mu']))
         theta_A = np.arctan(self.setup['mu'] / (2.0 + self.setup['mu']))
 
-        x = z + 1/2
+        #transform between nondimensional and normal coordinates
+        x = self.setup['L']*z + 1/2 * self.setup['L']
         alpha_term = np.sqrt(self.setup['omega'] / (2.0 * self.setup['kappa']))
 
         coeff_1 = (self.setup['A_T'] * np.sqrt((2.0 + self.setup['mu']) ** 2 + self.setup['mu']**2) / ((1.0 + self.setup['mu']) ** 2 + 1.0))
