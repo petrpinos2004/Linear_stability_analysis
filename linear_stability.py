@@ -5,14 +5,18 @@ from math import *
 
 class Stability:
     def __init__(self, setup, mode='convection'):
+
         self.setup = setup
+        self.mode = mode
+
+        #nondimensionalization
         self.setup['omega'] = 2 * pi *self.setup['f']
         self.setup['tau_D'] = self.setup['delta_diff']**2 / self.setup['kappa']
         self.setup['mu'] = (self.setup['gamma'] - 1) / self.setup['L'] * sqrt(2 * self.setup['kappa'] / self.setup['omega'])
-        self.setup['Pr'] = self.setup['nu']/self.setup['kappa']
-        self.setup['Ra_th'] = self.setup['rho'] * 9.81 * self.setup['cp_b'] * self.setup['L']**3 / (self.setup['nu'] * self.setup['lambda'])
-        print(self.setup['Ra_th'])
-        self.mode = mode
+        self.setup['D_val'] = self.setup['alpha_p'] * 9.81 * self.setup['L'] / self.setup['cp']
+        self.setup['Pr'] = self.setup['nu'] / self.setup['kappa']
+        self.setup['Ra_th'] = self.setup['rho'] * 9.81 * self.setup['cp'] * self.setup['L']**3 / (self.setup['nu'] * self.setup['lambda'])
+        print(self.setup['Ra_th'] * self.setup['alpha_p'] * self.setup['A_T'], self.setup['Pr'], self.setup['D_val'])
 
     def create_chebyshev_grid(self):
         j = np.arange(self.setup['N'] + 1)
@@ -56,7 +60,9 @@ class Stability:
         phase_2 = theta_B + self.setup['omega'] * self.setup['t']
         term_2 = coeff_2 * (np.cos(phase_2) + 1j * np.sin(phase_2))
 
-        return np.real(term_1 + term_2)
+        non_dimensional = np.real(term_1 + term_2) / self.setup['A_T']
+
+        return non_dimensional
 
     def analytic_model_pressure_profile(self, z):
         theta_B = - np.arctan(1.0 / (1.0 + self.setup['mu']))
@@ -77,7 +83,8 @@ class Stability:
         if self.mode == 'modulation':
             Tb = self.analytic_model_temp_profile(z)
             p_b_scalar = self.analytic_model_pressure_profile(z)
-            rho_b = 1.0 + self.setup['alpha_T'] * (Tb - np.mean(Tb)) + self.setup['alpha_p'] * p_b_scalar * np.ones_like(z)
+            rho_b = self.setup['alpha_p'] * Tb * self.setup['A_T']  + self.setup['alpha_T'] * p_b_scalar * np.ones_like(z)
+            print(np.mean(rho_b))
             drho_dz = D1 @ rho_b
             dTb_dz = D1 @ Tb
         else:
@@ -106,12 +113,12 @@ class Stability:
         B[p_slice, uz_slice] = self.setup['Pr'] ** (-1) * np.diag(rho_b)
         A[p_slice, ux_slice] = (1j * self.setup['kx'] / 3.0) * D1
         A[p_slice, uz_slice] = (4.0 / 3.0) * D2 - (self.setup['kx']**2) * I
-        A[p_slice, p_slice] = -self.setup['Ra_th'] * D1 - self.setup['Ra_th'] * self.setup['alpha_p'] * I
+        A[p_slice, p_slice] = -self.setup['Ra_th'] * D1 - self.setup['Ra_th'] * self.setup['alpha_pb'] * I
         A[p_slice, T_slice] = -self.setup['Ra_th'] * self.setup['alpha_T'] * I
         
-        B[T_slice, p_slice] = -self.setup['D_val'] * self.setup['alpha_p'] * np.diag(Tb)
+        B[T_slice, p_slice] = -self.setup['D_val'] * self.setup['alpha_pb'] * np.diag(Tb)
         B[T_slice, T_slice] = np.diag(rho_b * self.setup['cp_b'])
-        A[T_slice, uz_slice] = np.diag(-rho_b * self.setup['cp_b'] * dTb_dz + self.setup['D_val'] * self.setup['alpha_p'] * Tb * dp_dz)
+        A[T_slice, uz_slice] = np.diag(-rho_b * self.setup['cp_b'] * dTb_dz + self.setup['D_val'] * self.setup['alpha_pb'] * Tb * dp_dz)
         A[T_slice, T_slice] = D2 - (self.setup['kx']**2) * I
         
         for b_idx in [0, self.setup['N']]:
@@ -184,10 +191,10 @@ class Stability:
     def plot_analytical_temperature_profile(self, z):
         plt.figure(figsize=(9, 6))
         x = z - np.min(z)
-        times = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90]
+        #times = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90]
 
         original_t = self.setup['t']
-        for ti in times:
+        for ti in self.setup['t']:
             self.setup['t'] = ti
             Tb = self.analytic_model_temp_profile(z)
             plt.plot(x, Tb, linewidth=1.5, label=f"t = {ti} s")

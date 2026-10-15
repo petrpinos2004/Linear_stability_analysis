@@ -1,6 +1,4 @@
 import matplotlib.pyplot as plt
-import numpy as np
-from scipy.linalg import eig
 import linear_stability as mother
 
 #####################################################
@@ -15,12 +13,13 @@ class Analysis(mother.Stability):
             'N' : 200,
             'L' : 0.3,
             'kx' : 3.117,
-            'D_val' : 0.1,
             'alpha_T' : -1.7e-5,
             'alpha_p' : 0.26,
-            'cp_b' : 6043,
-            'a' : 0.5,
-            't' : 10,
+            'alpha_pb' : 1,
+            'cp_b' : 1,
+            'cp' : 6043,
+            'a' : 1e-3,
+            't' : [10],
             'A_T' : 0.05,
             'f' : 0.01,
             'kappa' : 2.37e-7,
@@ -33,6 +32,6 @@ class Analysis(mother.Stability):
 
         super().__init__(setup, mode)
 
-experiment = Analysis(mode='modulation')
+experiment = Analysis(mode='8modulation')
 experiment.run()
        
