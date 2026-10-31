@@ -7,31 +7,23 @@ import linear_stability as mother
 
 class Analysis(mother.Stability):
 
-    def __init__(self, mode):
+    def __init__(self):
         
         setup = {
             'N' : 200,
             'L' : 0.3,
             'kx' : 3.117,
-            'alpha_T' : -1.7e-5,
-            'alpha_p' : 0.26,
-            'alpha_pb' : 1,
-            'cp_b' : 1,
-            'cp' : 6043,
             'a' : 1e-3,
-            't' : [10],
+            't' : 10,
+            'dt' : 0.1,
             'A_T' : 0.05,
             'f' : 0.01,
-            'kappa' : 2.37e-7,
-            'gamma' : 1.9,
-            'delta_diff' : 0.00409, # Stokes diffusion layer thickness
-            'nu' : 1.83e-7,
-            'rho' : 7.3, 
-            'lambda' : 0.01,
+            'T0' : 5,
+            'p0' : 67000,
         }
 
-        super().__init__(setup, mode)
+        super().__init__(setup)
 
-experiment = Analysis(mode='modulation')
+experiment = Analysis()
 experiment.run()
        

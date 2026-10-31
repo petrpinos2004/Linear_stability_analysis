@@ -103,15 +103,21 @@ class HEPAK(Excel):
 
         return np.vectorize(lambda T, p: self.xl.Evaluate(f'=HeCalc(17;0;1;{p};2;{T};1)') / T)(T, p)
 
-    #Returns fluid's viscosity
-    def nu(self, T, p):
+    #Returns fluid's dynamic viscosity
+    def eta(self, T, p):
 
         return np.vectorize(lambda T, p: self.xl.Evaluate(f'=HeCalc(25;0;1;{p};2;{T};1)'))(T, p)
+
+    #Returns fluid's kinematic viscosity
+    def nu(self, T, p):
+    
+        return self.eta(T,p) / self.rho(T,p)
+
+    #Returns fluid's thermal conductivity
+    def lam(self, T, p):
+    
+        return np.vectorize(lambda T, p: self.xl.Evaluate(f'=HeCalc(26;0;1;{p};2;{T};1)'))(T, p)
 
     def __exit__(self):
         
         self.close()
-
-test = HEPAK()
-print(test.alpha_p(np.array([5,5,5,5,5]), np.array([60005,50000,55000,65000,58000])))
-print(test.rho(5,65000))

@@ -5,27 +5,63 @@ from math import *
 from HEPAK_API import HEPAK
 
 class Stability:
-    def __init__(self, setup, mode='convection'):
+
+    def __init__(self, setup):
 
         self.setup = setup
-        self.mode = mode
         self.He = HEPAK()
 
-        #nondimensionalization
+        #Thermodynamic properties from HEPAK
+        self.setup['alpha_p'] = self.He.alpha_p(self.setup['T0'], self.setup['p0'])
+        self.setup['alpha_T'] = self.He.alpha_T(self.setup['T0'], self.setup['p0'])
+        self.setup['cp']    =   self.He.cp(self.setup['T0'], self.setup['p0'])
+        self.setup['kappa']  =  self.He.kappa(self.setup['T0'], self.setup['p0'])
+        self.setup['gamma'] =   self.He.gamma(self.setup['T0'], self.setup['p0'])
+        self.setup['lambda'] =   self.He.lam(self.setup['T0'], self.setup['p0'])
+        self.setup['nu'] =   self.He.nu(self.setup['T0'], self.setup['p0'])
+
+        #Derived values
         self.setup['omega'] = 2 * pi *self.setup['f']
+        self.setup['delta_diff'] = np.sqrt(self.setup['kappa'] / (self.setup['f'] * np.pi ))
         self.setup['tau_D'] = self.setup['delta_diff']**2 / self.setup['kappa']
         self.setup['mu'] = (self.setup['gamma'] - 1) / self.setup['L'] * sqrt(2 * self.setup['kappa'] / self.setup['omega'])
-        self.setup['D_val'] = self.setup['alpha_p'] * 9.81 * self.setup['L'] / self.setup['cp']
-        self.setup['Pr'] = self.setup['nu'] / self.setup['kappa']
-        self.setup['Ra_th'] = self.setup['rho'] * 9.81 * self.setup['cp'] * self.setup['L']**3 / (self.setup['nu'] * self.setup['lambda'])
-        print(self.setup['Ra_th'] * self.setup['alpha_p'] * self.setup['A_T'], self.setup['Pr'], self.setup['D_val'])
+       
+        #Base solution from analytical model
+        z, D1, _ = self.get_derivative_matricies()
+        self.T = self.analytic_model_temp_profile(z) + self.setup['T0']
+        self.p = self.analytic_model_pressure_profile() + self.setup['p0']
+        self.rho = self.He.rho(self.T, self.p)
 
+        #Space derivatives of base solution
+        self.drho_dz = D1 @ self.rho
+        self.dTb_dz = D1 @ self.T
+        self.dp_dz = self.rho * 9.81
+
+        #Time derivatives of base solution
+        self.dTb_dt = self.analytic_model_temp_profile(z, True)
+        self.dp_dt = self.analytic_model_pressure_profile(True)
+        time_shift = self.setup['t'] + self.setup['dt']
+        rho_shift = self.He.rho(self.analytic_model_temp_profile(z,time_shift) + self.setup['T0'], self.analytic_model_pressure_profile(time_shift) + self.setup['p0'])
+        self.drho_dt = (rho_shift - self.rho) / self.setup['dt']
+
+        print(self.T)
+        print(self.p)
+        print(self.rho)
+
+        print(self.dTb_dt)
+        print(self.dp_dt)
+        print(self.drho_dt)
+
+    def nondimensionalization(self):
+        pass
+        #nondimensionalization is not performed at this stage
+        
     def create_chebyshev_grid(self):
         j = np.arange(self.setup['N'] + 1)
         z = np.cos(np.pi * j / self.setup['N'])
         return z
 
-    def get_derivatives(self):
+    def get_derivative_matricies(self):
         j = np.arange(self.setup['N'] + 1)
         xi = np.cos(np.pi * j / self.setup['N'])
 
@@ -46,7 +82,11 @@ class Stability:
 
         return z, D1, D2
 
-    def analytic_model_temp_profile(self, z):
+    def analytic_model_temp_profile(self, z, t=None, derivative=False):
+
+        if t is None:
+            t = self.setup['t']
+
         theta_B = - np.arctan(1.0 / (1.0 + self.setup['mu']))
         theta_A = np.arctan(self.setup['mu'] / (2.0 + self.setup['mu']))
 
@@ -54,53 +94,48 @@ class Stability:
         x = self.setup['L']*z + 1/2 * self.setup['L']
         alpha_term = np.sqrt(self.setup['omega'] / (2.0 * self.setup['kappa']))
 
-        coeff_1 = (self.setup['A_T'] * np.sqrt((2.0 + self.setup['mu']) ** 2 + self.setup['mu']**2) / ((1.0 + self.setup['mu']) ** 2 + 1.0))
-        phase_1 = theta_A - alpha_term * x + self.setup['omega'] * self.setup['t']
-        term_1 = (coeff_1 * np.exp(-alpha_term * x) * (np.cos(phase_1) + 1j * np.sin(phase_1)))
+        amplitude_BL = (self.setup['A_T'] * np.sqrt((2.0 + self.setup['mu']) ** 2 + self.setup['mu']**2) / ((1.0 + self.setup['mu']) ** 2 + 1.0))
+        phase_BL = theta_A - alpha_term * x + self.setup['omega'] * t
+        BL = (amplitude_BL * np.exp(-alpha_term * x) * (np.cos(phase_BL) + 1j * np.sin(phase_BL)))
 
-        coeff_2 = self.setup['A_T'] * self.setup['mu'] / np.sqrt((1.0 + self.setup['mu']) ** 2 + 1.0)
-        phase_2 = theta_B + self.setup['omega'] * self.setup['t']
-        term_2 = coeff_2 * (np.cos(phase_2) + 1j * np.sin(phase_2))
+        amplitude_PE = self.setup['A_T'] * self.setup['mu'] / np.sqrt((1.0 + self.setup['mu']) ** 2 + 1.0)
+        phase_PE = theta_B + self.setup['omega'] * t
+        PE = amplitude_PE * (np.cos(phase_PE) + 1j * np.sin(phase_PE))
 
-        non_dimensional = np.real(term_1 + term_2) / self.setup['A_T']
+        if derivative:
+            return np.real((BL + PE) * 1j * self.setup['omega'])
+        else:
+            return np.real(BL + PE)
 
-        return non_dimensional
+    def analytic_model_pressure_profile(self, t=None, derivative=False):
 
-    def analytic_model_pressure_profile(self, z):
+        if t is None:
+            t = self.setup['t']
+
         theta_B = - np.arctan(1.0 / (1.0 + self.setup['mu']))
         amplitude = self.setup['A_T'] * self.setup['gamma'] * (self.setup['alpha_p'] / self.setup['alpha_T']) * np.sqrt(2.0 / (self.setup['omega'] * self.setup['tau_D'])) / np.sqrt((1.0 + self.setup['mu']) ** 2 + 1.0)
-        phase = theta_B + self.setup['omega'] * self.setup['t']
+        phase = theta_B + self.setup['omega'] * t
         p_complex = amplitude * (np.cos(phase) + 1j * np.sin(phase))
-        return np.real(p_complex)
+
+        if derivative:
+            return np.real(p_complex * 1j * self.setup['omega'])
+        else:
+            return np.real(p_complex)
 
     def build_system_matrix(self):
-        z, D1, D2 = self.get_derivatives()
         n_pts = self.setup['N'] + 1
         dim = 4 * n_pts  
         
         A = np.zeros((dim, dim), dtype=complex)
         B = np.zeros((dim, dim), dtype=complex)
         I = np.eye(n_pts)
-
-        if self.mode == 'modulation':
-            Tb = self.analytic_model_temp_profile(z)
-            p_b_scalar = self.analytic_model_pressure_profile(z)
-            rho_b = self.He.rho(Tb, p_b_scalar)
-            print(np.mean(rho_b))
-            drho_dz = D1 @ rho_b
-            dTb_dz = D1 @ Tb
-        else:
-            Tb = 1.0 - self.setup['a'] * z  #Convection regime
-            dTb_dz = -self.setup['a'] * np.ones_like(z)
-            rho_b = np.ones_like(z)
-            drho_dz = np.zeros_like(z)
-        
-        dp_dz = -rho_b
         
         ux_slice = slice(0, n_pts)
         uz_slice = slice(n_pts, 2 * n_pts)
         p_slice = slice(2 * n_pts, 3 * n_pts)
         T_slice = slice(3 * n_pts, 4 * n_pts)
+
+        _, D1, D2 = self.get_derivative_matricies()
         
         B[ux_slice, p_slice] = self.setup['alpha_p'] * I
         B[ux_slice, T_slice] = self.setup['alpha_T'] * I
@@ -211,7 +246,7 @@ class Stability:
         plt.tight_layout()
 
     def run(self):
-        z, _, _ = self.get_derivatives()
+        z, _, _ = self.get_derivative_matricies()
         A, B = self.build_system_matrix()
         eigenvalues, eigenvectors = self.solve_stability(A, B)
 
