@@ -32,6 +32,6 @@ class Analysis(mother.Stability):
 
         super().__init__(setup, mode)
 
-experiment = Analysis(mode='8modulation')
+experiment = Analysis(mode='modulation')
 experiment.run()
        

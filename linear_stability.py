@@ -2,12 +2,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.linalg import eig
 from math import *
+from HEPAK_API import HEPAK
 
 class Stability:
     def __init__(self, setup, mode='convection'):
 
         self.setup = setup
         self.mode = mode
+        self.He = HEPAK()
 
         #nondimensionalization
         self.setup['omega'] = 2 * pi *self.setup['f']
@@ -83,7 +85,7 @@ class Stability:
         if self.mode == 'modulation':
             Tb = self.analytic_model_temp_profile(z)
             p_b_scalar = self.analytic_model_pressure_profile(z)
-            rho_b = self.setup['alpha_p'] * Tb * self.setup['A_T']  + self.setup['alpha_T'] * p_b_scalar * np.ones_like(z)
+            rho_b = self.He.rho(Tb, p_b_scalar)
             print(np.mean(rho_b))
             drho_dz = D1 @ rho_b
             dTb_dz = D1 @ Tb

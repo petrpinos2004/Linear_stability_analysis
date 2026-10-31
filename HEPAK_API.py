@@ -5,6 +5,7 @@ import os
 import atexit
 import threading
 import time
+import numpy as np
 
 ######################################################################
 # Define global variables
@@ -70,22 +71,22 @@ class HEPAK(Excel):
     #Returns fluid's density
     def rho(self, T, p):
 
-        return self.xl.Evaluate(f'=HeCalc(3;0;1;{p};2;{T};1)')
-
+        return np.vectorize(lambda T, p: self.xl.Evaluate(f'=HeCalc(3;0;1;{p};2;{T};1)'))(T, p)
+    
     #Returns fluid's thermal diffusivity
     def kappa(self, T, p):
 
-        return self.xl.Evaluate(f'=HeCalc(28;0;1;{p};2;{T};1)')
+        return np.vectorize(lambda T, p: self.xl.Evaluate(f'=HeCalc(28;0;1;{p};2;{T};1)'))(T, p)
 
     #Returns fluid's heat capacity at constant pressure
     def cp(self, T, p):
 
-        return self.xl.Evaluate(f'=HeCalc(14;0;1;{p};2;{T};1)')
+        return np.vectorize(lambda T, p: self.xl.Evaluate(f'=HeCalc(14;0;1;{p};2;{T};1)'))(T, p)
 
     #Returns fluid's heat capacity at constant volume
     def cv(self, T, p):
 
-        return self.xl.Evaluate(f'=HeCalc(15;0;1;{p};2;{T};1)')
+        return np.vectorize(lambda T, p: self.xl.Evaluate(f'=HeCalc(15;0;1;{p};2;{T};1)'))(T, p)
 
     #Returns fluid's ratio of specific heats
     def gamma(self, T, p):
@@ -95,18 +96,22 @@ class HEPAK(Excel):
     #Returns fluid's isothermal compressibility
     def alpha_T(self, T, p):
 
-        return self.xl.Evaluate(f'=HeCalc(19;0;1;{p};2;{T};1)')
+        return np.vectorize(lambda T, p: self.xl.Evaluate(f'=HeCalc(19;0;1;{p};2;{T};1)'))(T, p)
 
     #Returns fluid's isobaric expansivity
     def alpha_p(self, T, p):
 
-        return self.xl.Evaluate(f'=HeCalc(17;0;1;{p};2;{T};1)') / T
+        return np.vectorize(lambda T, p: self.xl.Evaluate(f'=HeCalc(17;0;1;{p};2;{T};1)') / T)(T, p)
 
     #Returns fluid's viscosity
     def nu(self, T, p):
 
-        return self.xl.Evaluate(f'=HeCalc(25;0;1;{p};2;{T};1)')
+        return np.vectorize(lambda T, p: self.xl.Evaluate(f'=HeCalc(25;0;1;{p};2;{T};1)'))(T, p)
 
     def __exit__(self):
         
         self.close()
+
+test = HEPAK()
+print(test.alpha_p(np.array([5,5,5,5,5]), np.array([60005,50000,55000,65000,58000])))
+print(test.rho(5,65000))
