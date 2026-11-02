@@ -60,7 +60,8 @@ class Stability:
         
     def create_chebyshev_grid(self):
         j = np.arange(self.setup['N'] + 1)
-        z = np.cos(np.pi * j / self.setup['N'])
+        xi = np.cos(np.pi * j / self.setup['N'])
+        z = 0.5 * self.setup['L'] * (xi + 1.0)
         return z
 
     def get_derivative_matricies(self):
@@ -78,9 +79,9 @@ class Stability:
         D1_comp = D1_comp - np.diag(np.sum(D1_comp.T, axis=0))
         D2_comp = np.dot(D1_comp, D1_comp)
 
-        z = 0.5 * xi
-        D1 = 2.0 * D1_comp  
-        D2 = 4.0 * D2_comp
+        z = 0.5 * self.setup['L'] * (xi + 1.0)
+        D1 = (2.0 / self.setup['L']) * D1_comp  
+        D2 = (4.0 / self.setup['L']**2 ) * D2_comp
 
         return z, D1, D2
 
@@ -93,7 +94,7 @@ class Stability:
         theta_A = np.arctan(self.setup['mu'] / (2.0 + self.setup['mu']))
 
         #transform between nondimensional and normal coordinates
-        x = self.setup['L']*z + 1/2 * self.setup['L']
+        x = z
         alpha_term = np.sqrt(self.setup['omega'] / (2.0 * self.setup['kappa']))
 
         amplitude_BL = (self.setup['A_T'] * np.sqrt((2.0 + self.setup['mu']) ** 2 + self.setup['mu']**2) / ((1.0 + self.setup['mu']) ** 2 + 1.0))
@@ -233,20 +234,25 @@ class Stability:
 
     def plot_analytical_temperature_profile(self, z):
         plt.figure(figsize=(9, 6))
-        x = z - np.min(z)
+        x = z
         times = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90]
 
-        #original_t = self.setup['t']
-        for ti in times:
+        original_t = self.setup['t']
+        for i,ti in enumerate(times):
             self.setup['t'] = ti
             Tb = self.analytic_model_temp_profile(z)
             plt.plot(x, Tb, linewidth=1.5, label=f"t = {ti} s")
+            if i==0:
+                self.setup['t'] = original_t
+                T_main = self.analytic_model_temp_profile(z)
+                plt.plot(x, T_main, linewidth=3, color='black', label=f"This stability analysis: t = {original_t} s")
+        self.setup['t'] = original_t
 
         plt.axhline(y=0, color="black", linestyle="--", linewidth=0.8)
-        plt.xlabel("Boundary Distance ($x$) [units]", fontsize=12)
+        plt.xlabel("Vertical coordinate $z$ [m]", fontsize=12)
         plt.ylabel("$T(x,t)$ [K]", fontsize=12)
         plt.title("Harmonic Solution", fontsize=14)
-        plt.grid(True, linestyle=":", alpha=0.7)
+        plt.xlim(-0.002, 0.03)
         plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
         plt.tight_layout()
 
