@@ -34,11 +34,11 @@ class Stability:
 
         #Space derivatives of base solution
         self.drho_dz = D1 @ self.rho
-        self.dTb_dz = D1 @ self.T
+        self.dT_dz = D1 @ self.T
         self.dp_dz = self.rho * 9.81
 
         #Time derivatives of base solution
-        self.dTb_dt = self.analytic_model_temp_profile(z, True)
+        self.dT_dt = self.analytic_model_temp_profile(z, True)
         self.dp_dt = self.analytic_model_pressure_profile(True)
         time_shift = self.setup['t'] + self.setup['dt']
         rho_shift = self.He.rho(self.analytic_model_temp_profile(z,time_shift) + self.setup['T0'], self.analytic_model_pressure_profile(time_shift) + self.setup['p0'])
@@ -48,9 +48,11 @@ class Stability:
         print(self.p)
         print(self.rho)
 
-        print(self.dTb_dt)
+        print(self.dT_dt)
         print(self.dp_dt)
         print(self.drho_dt)
+
+        print(self.dp_dz)
 
     def nondimensionalization(self):
         pass
@@ -124,7 +126,7 @@ class Stability:
 
     def build_system_matrix(self):
         n_pts = self.setup['N'] + 1
-        dim = 4 * n_pts  
+        dim = 5 * n_pts  
         
         A = np.zeros((dim, dim), dtype=complex)
         B = np.zeros((dim, dim), dtype=complex)
@@ -134,30 +136,34 @@ class Stability:
         uz_slice = slice(n_pts, 2 * n_pts)
         p_slice = slice(2 * n_pts, 3 * n_pts)
         T_slice = slice(3 * n_pts, 4 * n_pts)
+        rho_slice = slice(4 * n_pts, 5 * n_pts)
 
         _, D1, D2 = self.get_derivative_matricies()
         
-        B[ux_slice, p_slice] = self.setup['alpha_p'] * I
-        B[ux_slice, T_slice] = self.setup['alpha_T'] * I
-        A[ux_slice, ux_slice] = -1j * self.setup['kx'] * np.diag(rho_b)
-        A[ux_slice, uz_slice] = -np.diag(rho_b) @ D1 - np.diag(drho_dz)
+        B[p_slice, rho_slice] = I
+        A[p_slice, ux_slice] = -1j * self.setup['kx'] * np.diag(self.rho)
+        A[p_slice, uz_slice] = -np.diag(self.rho) @ D1 - np.diag(self.drho_dz)
         
-        B[uz_slice, ux_slice] = self.setup['Pr'] ** (-1) * np.diag(rho_b)
-        A[uz_slice, ux_slice] = D2 - (4.0 / 3.0) * (self.setup['kx']**2) * I
-        A[uz_slice, uz_slice] = (1j * self.setup['kx'] / 3.0) * D1
-        A[uz_slice, p_slice] = -self.setup['Ra_th'] * 1j * self.setup['kx'] * I
+        B[ux_slice, ux_slice] = np.diag(self.rho)
+        A[ux_slice, ux_slice] = self.setup['mu'] * (D2 - self.setup['kx']**2 * I)
+        A[ux_slice, uz_slice] = (1j * self.setup['kx'] / 3.0) * D1
+        A[ux_slice, p_slice] = -1j * self.setup['kx'] * I
         
-        B[p_slice, uz_slice] = self.setup['Pr'] ** (-1) * np.diag(rho_b)
-        A[p_slice, ux_slice] = (1j * self.setup['kx'] / 3.0) * D1
-        A[p_slice, uz_slice] = (4.0 / 3.0) * D2 - (self.setup['kx']**2) * I
-        A[p_slice, p_slice] = -self.setup['Ra_th'] * D1 - self.setup['Ra_th'] * self.setup['alpha_pb'] * I
-        A[p_slice, T_slice] = -self.setup['Ra_th'] * self.setup['alpha_T'] * I
+        B[uz_slice, uz_slice] = np.diag(self.rho)
+        A[uz_slice, ux_slice] = (1j * self.setup['kx'] / 3.0) * D1
+        A[uz_slice, uz_slice] = self.setup['mu'] * ((4.0 / 3.0) * D2 - (self.setup['kx']**2) * I)
+        A[uz_slice, p_slice] = - D1
+        A[uz_slice, rho_slice] = -9.81 * I
         
-        B[T_slice, p_slice] = -self.setup['D_val'] * self.setup['alpha_pb'] * np.diag(Tb)
-        B[T_slice, T_slice] = np.diag(rho_b * self.setup['cp_b'])
-        A[T_slice, uz_slice] = np.diag(-rho_b * self.setup['cp_b'] * dTb_dz + self.setup['D_val'] * self.setup['alpha_pb'] * Tb * dp_dz)
-        A[T_slice, T_slice] = D2 - (self.setup['kx']**2) * I
-        
+        B[T_slice, p_slice] = -self.setup['alpha_p'] * np.diag(self.T)
+        B[T_slice, T_slice] = self.setup['cp'] * np.diag(self.rho)
+        A[T_slice, uz_slice] = self.setup['cp'] * np.diag(self.rho * self.dT_dz) + self.setup['alpha_p'] * np.diag(self.T * self.dp_dz)
+        A[T_slice, T_slice] = self.setup['kappa'] * (D2 - (self.setup['kx']**2) * I) + self.setup['alpha_p'] * self.dp_dt * I
+
+        A[rho_slice, rho_slice] = I
+        A[rho_slice, p_slice] = - np.diag(self.rho * self.He.alpha_p(self.T, self.p))
+        A[rho_slice, T_slice] = np.diag(self.rho * self.He.alpha_T(self.T, self.p))
+
         for b_idx in [0, self.setup['N']]:
             for field_base in [0, n_pts, 3 * n_pts]:
                 row = b_idx + field_base
@@ -228,14 +234,13 @@ class Stability:
     def plot_analytical_temperature_profile(self, z):
         plt.figure(figsize=(9, 6))
         x = z - np.min(z)
-        #times = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90]
+        times = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90]
 
-        original_t = self.setup['t']
-        for ti in self.setup['t']:
+        #original_t = self.setup['t']
+        for ti in times:
             self.setup['t'] = ti
             Tb = self.analytic_model_temp_profile(z)
             plt.plot(x, Tb, linewidth=1.5, label=f"t = {ti} s")
-        self.setup['t'] = original_t
 
         plt.axhline(y=0, color="black", linestyle="--", linewidth=0.8)
         plt.xlabel("Boundary Distance ($x$) [units]", fontsize=12)
@@ -266,6 +271,5 @@ class Stability:
         self.plot_top_eigenmodes(z, eigenvectors, eigenvalues, top_k=5)
         plt.show()
 
-        if self.mode == 'modulation':
-            self.plot_analytical_temperature_profile(z)
-            plt.show()
+        self.plot_analytical_temperature_profile(z)
+        plt.show()
