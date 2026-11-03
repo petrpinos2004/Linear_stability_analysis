@@ -12,47 +12,38 @@ class Stability:
         self.He = HEPAK()
 
         #Thermodynamic properties from HEPAK
-        self.setup['alpha_p'] = self.He.alpha_p(self.setup['T0'], self.setup['p0'])
-        self.setup['alpha_T'] = self.He.alpha_T(self.setup['T0'], self.setup['p0'])
-        self.setup['cp']    =   self.He.cp(self.setup['T0'], self.setup['p0'])
-        self.setup['kappa']  =  self.He.kappa(self.setup['T0'], self.setup['p0'])
-        self.setup['gamma'] =   self.He.gamma(self.setup['T0'], self.setup['p0'])
-        self.setup['lambda'] =   self.He.lam(self.setup['T0'], self.setup['p0'])
-        self.setup['nu'] =   self.He.nu(self.setup['T0'], self.setup['p0'])
+        self.setup['alpha_p'] = self.He.alpha_p(self.setup['T_T'], self.setup['p0'])
+        self.setup['alpha_T'] = self.He.alpha_T(self.setup['T_T'], self.setup['p0'])
+        self.setup['cp']    =   self.He.cp(self.setup['T_T'], self.setup['p0'])
+        self.setup['kappa']  =  self.He.kappa(self.setup['T_T'], self.setup['p0'])
+        self.setup['gamma'] =   self.He.gamma(self.setup['T_T'], self.setup['p0'])
+        self.setup['lambda'] =   self.He.lam(self.setup['T_T'], self.setup['p0'])
+        self.setup['eta'] =   self.He.eta(self.setup['T_T'], self.setup['p0'])
 
         #Derived values
         self.setup['omega'] = 2 * pi *self.setup['f']
         self.setup['delta_diff'] = np.sqrt(self.setup['kappa'] / (self.setup['f'] * np.pi ))
         self.setup['tau_D'] = self.setup['delta_diff']**2 / self.setup['kappa']
         self.setup['mu'] = (self.setup['gamma'] - 1) / self.setup['L'] * sqrt(2 * self.setup['kappa'] / self.setup['omega'])
+        self.setup['g'] = 9.81
        
         #Base solution from analytical model
         z, D1, _ = self.get_derivative_matricies()
-        self.T = self.analytic_model_temp_profile(z) + self.setup['T0']
+        self.T = self.analytic_model_temp_profile(z)
         self.p = self.analytic_model_pressure_profile() + self.setup['p0']
         self.rho = self.He.rho(self.T, self.p)
 
         #Space derivatives of base solution
         self.drho_dz = D1 @ self.rho
         self.dT_dz = D1 @ self.T
-        self.dp_dz = self.rho * 9.81
+        self.dp_dz = self.rho * self.setup['g']
 
         #Time derivatives of base solution
-        self.dT_dt = self.analytic_model_temp_profile(z, True)
-        self.dp_dt = self.analytic_model_pressure_profile(True)
+        self.dT_dt = self.analytic_model_temp_profile(z, derivative=True)
+        self.dp_dt = self.analytic_model_pressure_profile(derivative=True)
         time_shift = self.setup['t'] + self.setup['dt']
-        rho_shift = self.He.rho(self.analytic_model_temp_profile(z,time_shift) + self.setup['T0'], self.analytic_model_pressure_profile(time_shift) + self.setup['p0'])
+        rho_shift = self.He.rho(self.analytic_model_temp_profile(z,time_shift), self.analytic_model_pressure_profile(time_shift) + self.setup['p0'])
         self.drho_dt = (rho_shift - self.rho) / self.setup['dt']
-
-        print(self.T)
-        print(self.p)
-        print(self.rho)
-
-        print(self.dT_dt)
-        print(self.dp_dt)
-        print(self.drho_dt)
-
-        print(self.dp_dz)
 
     def nondimensionalization(self):
         pass
@@ -105,10 +96,12 @@ class Stability:
         phase_PE = theta_B + self.setup['omega'] * t
         PE = amplitude_PE * (np.cos(phase_PE) + 1j * np.sin(phase_PE))
 
+        T_background = self.setup['T_T'] + (self.setup['T_B'] - self.setup['T_T']) * z / self.setup['L']
+
         if derivative:
             return np.real((BL + PE) * 1j * self.setup['omega'])
         else:
-            return np.real(BL + PE)
+            return np.real(BL + PE) + T_background
 
     def analytic_model_pressure_profile(self, t=None, derivative=False):
 
@@ -116,14 +109,15 @@ class Stability:
             t = self.setup['t']
 
         theta_B = - np.arctan(1.0 / (1.0 + self.setup['mu']))
-        amplitude = self.setup['A_T'] * self.setup['gamma'] * (self.setup['alpha_p'] / self.setup['alpha_T']) * np.sqrt(2.0 / (self.setup['omega'] * self.setup['tau_D'])) / np.sqrt((1.0 + self.setup['mu']) ** 2 + 1.0)
-        phase = theta_B + self.setup['omega'] * t
-        p_complex = amplitude * (np.cos(phase) + 1j * np.sin(phase))
 
+        amplitude = self.setup['A_T'] * (self.setup['delta_diff'] / self.setup['L']) * (self.setup['alpha_p'] / (self.setup['alpha_T'])) * self.setup['gamma'] / np.sqrt((1.0 + self.setup['mu']) ** 2 + 1.0)
+        phase = theta_B + self.setup['omega'] * t
+        pressure = amplitude * (np.cos(phase) + 1j * np.sin(phase))
+        
         if derivative:
-            return np.real(p_complex * 1j * self.setup['omega'])
+            return np.real(pressure * 1j * self.setup['omega'])
         else:
-            return np.real(p_complex)
+            return np.real(pressure)
 
     def build_system_matrix(self):
         n_pts = self.setup['N'] + 1
@@ -146,20 +140,21 @@ class Stability:
         A[p_slice, uz_slice] = -np.diag(self.rho) @ D1 - np.diag(self.drho_dz)
         
         B[ux_slice, ux_slice] = np.diag(self.rho)
-        A[ux_slice, ux_slice] = self.setup['mu'] * (D2 - self.setup['kx']**2 * I)
-        A[ux_slice, uz_slice] = (1j * self.setup['kx'] / 3.0) * D1
+        A[ux_slice, ux_slice] = self.setup['eta'] * (D2 - self.setup['kx']**2 * I)
+        A[ux_slice, uz_slice] = self.setup['eta'] * (1j * self.setup['kx'] / 3.0) * D1
         A[ux_slice, p_slice] = -1j * self.setup['kx'] * I
         
         B[uz_slice, uz_slice] = np.diag(self.rho)
-        A[uz_slice, ux_slice] = (1j * self.setup['kx'] / 3.0) * D1
-        A[uz_slice, uz_slice] = self.setup['mu'] * ((4.0 / 3.0) * D2 - (self.setup['kx']**2) * I)
+        A[uz_slice, ux_slice] = self.setup['eta'] * (1j * self.setup['kx'] / 3.0) * D1
+        A[uz_slice, uz_slice] = self.setup['eta'] * ((4.0 / 3.0) * D2 - (self.setup['kx']**2) * I)
         A[uz_slice, p_slice] = - D1
-        A[uz_slice, rho_slice] = -9.81 * I
+        A[uz_slice, rho_slice] = self.setup['g'] * I
         
         B[T_slice, p_slice] = -self.setup['alpha_p'] * np.diag(self.T)
         B[T_slice, T_slice] = self.setup['cp'] * np.diag(self.rho)
-        A[T_slice, uz_slice] = self.setup['cp'] * np.diag(self.rho * self.dT_dz) + self.setup['alpha_p'] * np.diag(self.T * self.dp_dz)
-        A[T_slice, T_slice] = self.setup['kappa'] * (D2 - (self.setup['kx']**2) * I) + self.setup['alpha_p'] * self.dp_dt * I
+        A[T_slice, uz_slice] = -self.setup['cp'] * np.diag(self.rho * self.dT_dz) + self.setup['alpha_p'] * np.diag(self.T * self.dp_dz)
+        A[T_slice, T_slice] = self.setup['lambda'] * (D2 - (self.setup['kx']**2) * I) + self.setup['alpha_p'] * self.dp_dt * I
+        A[T_slice, rho_slice] = -self.setup['cp'] * np.diag(self.dT_dt)
 
         A[rho_slice, rho_slice] = I
         A[rho_slice, p_slice] = - np.diag(self.rho * self.He.alpha_p(self.T, self.p))
@@ -238,21 +233,38 @@ class Stability:
         times = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90]
 
         original_t = self.setup['t']
-        for i,ti in enumerate(times):
+
+        for i, ti in enumerate(times):
             self.setup['t'] = ti
             Tb = self.analytic_model_temp_profile(z)
+
             plt.plot(x, Tb, linewidth=1.5, label=f"t = {ti} s")
-            if i==0:
+
+            if i == 0:
                 self.setup['t'] = original_t
                 T_main = self.analytic_model_temp_profile(z)
-                plt.plot(x, T_main, linewidth=3, color='black', label=f"This stability analysis: t = {original_t} s")
+                plt.plot(
+                    x, T_main,
+                    linewidth=2.5,
+                    color='black',
+                    label=f"This stability analysis: t = {original_t} s"
+                )
+
+                # Computational grid points
+                plt.scatter(
+                    x, T_main,
+                    color='black',
+                    s=18,
+                    zorder=5,
+                    label=f"Grid points (N = {self.setup['N'] + 1})"
+                )
+
         self.setup['t'] = original_t
 
-        plt.axhline(y=0, color="black", linestyle="--", linewidth=0.8)
         plt.xlabel("Vertical coordinate $z$ [m]", fontsize=12)
         plt.ylabel("$T(x,t)$ [K]", fontsize=12)
-        plt.title("Harmonic Solution", fontsize=14)
-        plt.xlim(-0.002, 0.03)
+        plt.title("Harmonic Solution and Computational Grid", fontsize=14)
+        plt.xlim(0, 0.05)
         plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
         plt.tight_layout()
 
